@@ -40,7 +40,7 @@ pipeline {
       }
 
       parallel {
-        stage {
+        stage('Master') {
           when {
             branch 'master'
           }
@@ -52,7 +52,7 @@ pipeline {
             appIoStore.dockerTag = sh(returnStdout: true, script: "NODE_ENV=release node ./script/version.js").trim().toLowerCase()
           }
         }
-        stage {
+        stage('Draft') {
           when {
             branch 'draft'
           }
@@ -64,7 +64,7 @@ pipeline {
             appIoStore.dockerTag = sh(returnStdout: true, script: "NODE_ENV=draft node ./script/version.js").trim().toLowerCase()
           }
         }
-        stage {
+        stage('Env') {
           steps {
             appIoStore.dockerArgsDistDir = 'app'
 
@@ -81,7 +81,7 @@ pipeline {
         }
       }
 
-      stage {
+      stage('Print Env') {
         steps {
           sh 'printenv'
         }
