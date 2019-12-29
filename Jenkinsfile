@@ -1,22 +1,20 @@
+def aliDockerRegistry = 'registry.cn-beijing.aliyuncs.com/o-w-o'
+def aliDockerVpcRegistry = 'registry-vpc.cn-beijing.aliyuncs.com/o-w-o'
+def aliDockerInnerRegistry = 'registry-internal.cn-beijing.aliyuncs.com/o-w-o'
+
+def appName = 'pipeline'
+def appIoStore = [:]
+
 pipeline {
   triggers {
-    githubPush
-  }
-
-  environment {
-    aliDockerRegistry = 'registry.cn-beijing.aliyuncs.com/o-w-o'
-    aliDockerVpcRegistry = 'registry-vpc.cn-beijing.aliyuncs.com/o-w-o'
-    aliDockerInnerRegistry = 'registry-internal.cn-beijing.aliyuncs.com/o-w-o'
-
-    appName = 'pipeline'
-    appIoStore = [:]
+    githubPush()
   }
 
   agent {
     docker {
-      image "${env.aliDockerVpcRegistry}/app-starter"
+      image "${aliDockerVpcRegistry}/app-starter"
       label 'latest'
-      registryUrl "https://${env.aliDockerVpcRegistry}"
+      registryUrl "https://${aliDockerVpcRegistry}"
       registryCredentialsId 'aliDockerRegistry'
       args "-u root -v /var/npm/v10/node_modules:/root/.node_modules -v /var/npm/v10/node_global_modules:/root/.node_global_modules"
     }
@@ -47,11 +45,11 @@ pipeline {
             branch 'master'
           }
           steps {
-            env.appName = "${env.appName}-release"
+            appName = "${appName}-release"
 
             echo '1.4 获取 项目 package.json 中的应用信息'
-            env.appIoStore.dockerArgsPort = sh(returnStdout: true, script: "NODE_ENV=release node ./script/port.js").trim()
-            env.appIoStore.dockerTag = sh(returnStdout: true, script: "NODE_ENV=release node ./script/version.js").trim().toLowerCase()
+            appIoStore.dockerArgsPort = sh(returnStdout: true, script: "NODE_ENV=release node ./script/port.js").trim()
+            appIoStore.dockerTag = sh(returnStdout: true, script: "NODE_ENV=release node ./script/version.js").trim().toLowerCase()
           }
         }
         stage {
@@ -59,26 +57,26 @@ pipeline {
             branch 'draft'
           }
           steps {
-            env.appName = "${env.appName}-draft"
+            appName = "${appName}-draft"
 
             echo '1.4 获取 项目 package.json 中的应用信息'
-            env.appIoStore.dockerArgsPort = sh(returnStdout: true, script: "NODE_ENV=draft node ./script/port.js").trim()
-            env.appIoStore.dockerTag = sh(returnStdout: true, script: "NODE_ENV=draft node ./script/version.js").trim().toLowerCase()
+            appIoStore.dockerArgsPort = sh(returnStdout: true, script: "NODE_ENV=draft node ./script/port.js").trim()
+            appIoStore.dockerTag = sh(returnStdout: true, script: "NODE_ENV=draft node ./script/version.js").trim().toLowerCase()
           }
         }
         stage {
           steps {
-            env.appIoStore.dockerArgsDistDir = 'app'
+            appIoStore.dockerArgsDistDir = 'app'
 
-            env.appIoStore.stashMark = 'src-server-build'
-            env.appIoStore.stashIncludeRegex = "**/${env.appIoStore.dockerArgsDistDir}/*"
+            appIoStore.stashMark = 'src-server-build'
+            appIoStore.stashIncludeRegex = "**/${appIoStore.dockerArgsDistDir}/*"
 
-            env.appIoStore.dockerImageNameUseNormal = "${env.aliDockerRegistry}/${env.appName}"
-            env.appIoStore.dockerImageNameUseVpc = "${env.aliDockerVpcRegistry}/${env.appName}"
-            env.appIoStore.dockerImageNameUseInner = "${env.aliDockerInnerRegistry}/${env.appName}"
+            appIoStore.dockerImageNameUseNormal = "${aliDockerRegistry}/${appName}"
+            appIoStore.dockerImageNameUseVpc = "${aliDockerVpcRegistry}/${appName}"
+            appIoStore.dockerImageNameUseInner = "${aliDockerInnerRegistry}/${appName}"
 
-            env.appIoStore.dockerImageName = "${env.appIoStore.dockerImageNameUseVpc}"
-            env.appIoStore.dockerImageNameWithTag = "${env.appIoStore.dockerImageName}:${env.appIoStore.dockerTag}"
+            appIoStore.dockerImageName = "${appIoStore.dockerImageNameUseVpc}"
+            appIoStore.dockerImageNameWithTag = "${appIoStore.dockerImageName}:${appIoStore.dockerTag}"
           }
         }
       }
@@ -108,7 +106,7 @@ pipeline {
       }
       steps {
         echo "2.2 保存打包后的文件以备后续使用"
-        stash(name: "${env.appIoStore.stashMark}", includes: "${env.appIoStore.stashIncludeRegex}")
+        stash(name: "${appIoStore.stashMark}", includes: "${appIoStore.stashIncludeRegex}")
       }
     }
 
@@ -116,9 +114,9 @@ pipeline {
       steps {
         echo "4.Push Docker Image Stage"
 
-        docker.withRegistry("https://${env.aliDockerVpcRegistry}", 'aliDockerRegistry') {
+        docker.withRegistry("https://${aliDockerVpcRegistry}", 'aliDockerRegistry') {
           echo "4.1 获取 打包文件"
-          unstash("${env.appIoStore.stashMark}")
+          unstash("${appIoStore.stashMark}")
 
           echo "4.2 预检 Workspace"
           sh "ls -al"
@@ -128,11 +126,11 @@ pipeline {
           }
 
           echo "4.3 构建 Image"
-          env.appIoStore.dockerImage = docker.build(env.appIoStore.dockerImageName, "--build-arg DIST_DIR=${env.appIoStore.dockerArgsDistDir} --build-arg PORT=${env.appIoStore.dockerArgsPort} .")
+          appIoStore.dockerImage = docker.build(appIoStore.dockerImageName, "--build-arg DIST_DIR=${appIoStore.dockerArgsDistDir} --build-arg PORT=${appIoStore.dockerArgsPort} .")
 
           echo "4.4 发布 Image"
-          env.appIoStore.dockerImage.push()
-          env.appIoStore.dockerImage.push("${env.appIoStore.dockerTag}")
+          appIoStore.dockerImage.push()
+          appIoStore.dockerImage.push("${appIoStore.dockerTag}")
         }
       }
     }
@@ -151,18 +149,18 @@ pipeline {
             remote.identityFile = identity
 
             try {
-              sshCommand remote: remote, command: "docker stop ${env.appName}"
-              sshCommand remote: remote, command: "docker rm ${env.appName}"
+              sshCommand remote: remote, command: "docker stop ${appName}"
+              sshCommand remote: remote, command: "docker rm ${appName}"
             } catch (e) {
               echo "部署预处理异常 -> ${e.message}"
-              input("部署预处理出现异常，确认继续执行 【${env.appIoStore.dockerImageNameWithTag}】 部署行为？")
+              input("部署预处理出现异常，确认继续执行 【${appIoStore.dockerImageNameWithTag}】 部署行为？")
             } finally {
-              echo "${env.appIoStore.dockerImageNameWithTag}"
+              echo "${appIoStore.dockerImageNameWithTag}"
             }
 
             try {
-              sshCommand remote: remote, command: "docker pull ${env.appIoStore.dockerImageNameWithTag}"
-              sshCommand remote: remote, command: "docker run -i -d --net=host --name=${env.appName} ${env.appIoStore.dockerImageNameWithTag}"
+              sshCommand remote: remote, command: "docker pull ${appIoStore.dockerImageNameWithTag}"
+              sshCommand remote: remote, command: "docker run -i -d --net=host --name=${appName} ${appIoStore.dockerImageNameWithTag}"
             } catch (e) {
               echo "部署异常 -> ${e.message}"
             } finally {
