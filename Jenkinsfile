@@ -2,7 +2,7 @@ def aliDockerRegistry = 'registry.cn-beijing.aliyuncs.com/o-w-o'
 def aliDockerVpcRegistry = 'registry-vpc.cn-beijing.aliyuncs.com/o-w-o'
 def aliDockerInnerRegistry = 'registry-internal.cn-beijing.aliyuncs.com/o-w-o'
 
-def aliDockerRegistry = 'https://${aliDockerVpcRegistry}'
+def aliDockerRegistryUrl = 'https://${aliDockerVpcRegistry}'
 
 def appName = 'pipeline'
 def appIoStore = [:]
