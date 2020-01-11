@@ -19,7 +19,7 @@ pipeline {
     docker {
       image "${aliDockerVpcRegistry}/app-starter"
       label 'latest'
-      registryUrl "${aliDockerVpcRegistryUrl}"
+      registryUrl "${aliDockerRegistryUrl}"
       registryCredentialsId 'aliDockerRegistry'
       args "-u root -v /var/npm/v10/node_modules:/root/.node_modules -v /var/npm/v10/node_global_modules:/root/.node_global_modules"
     }
