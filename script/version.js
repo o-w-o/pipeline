@@ -10,11 +10,15 @@ let version;
 
 switch (argv.target) {
   case "server": {
-    version = require("../proxy/package.json").version;
+    version = '1.0.1';
+    break;
+  }
+  case "proxy": {
+    version = '1.1.1';
     break;
   }
   case "client": {
-    version = require("../client/package.json").version;
+    version = '1.1.0';
     break;
   }
   default: {
