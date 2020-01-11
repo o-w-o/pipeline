@@ -7,7 +7,7 @@ def aliDockerRegistryUrl = 'https://${aliDockerVpcRegistry}'
 def appName = 'pipeline'
 def appIoStore = [:]
 
-def APP_DRFAT_ENV = 'draft'
+def APP_DRAFT_ENV = 'draft'
 def APP_RELEASE_ENV = 'release'
 def APP_DEFAULT_ENV = 'default'
 def appEnv = APP_DEFAULT_ENV
@@ -17,9 +17,8 @@ def appEcsPassport = [:]
 pipeline {
   agent {
     docker {
-      image "${aliDockerVpcRegistry}/app-starter"
-      label 'latest'
-      registryUrl "${aliDockerRegistryUrl}"
+      image "registry-vpc.cn-beijing.aliyuncs.com/o-w-o/app-starter"
+      registryUrl "https://registry-vpc.cn-beijing.aliyuncs.com/o-w-o"
       registryCredentialsId 'aliDockerRegistry'
       args "-u root -v /var/npm/v10/node_modules:/root/.node_modules -v /var/npm/v10/node_global_modules:/root/.node_global_modules"
     }
@@ -31,7 +30,7 @@ pipeline {
   }
 
   options { 
-    retry(3) 
+    retry(1) 
   }
 
   stages {
@@ -140,31 +139,31 @@ pipeline {
 
     stage('build:stash') {
       steps {
-        echo "2.2 保存打包后的文件以备后续使用"
-        stash(name: "${appIoStore.stashMark}", includes: "${appIoStore.stashIncludeRegex}")
+        echo "1 保存打包后的文件以备后续使用"
+        stash(name: "${appIoStore.stashMark}", includes: "${appIoStore.stashIncludeRegex}", allowEmpty: true)
       }
     }
 
-    stage('package') {
+    stage('package:docker') {
       steps {
-        echo "4.Push Docker Image Stage"
+        echo "1. build and push docker image !"
 
         script {
-          docker.withRegistry("https://${aliDockerVpcRegistry}", 'aliDockerRegistry') {
-            echo "4.1 获取 打包文件"
+          docker.withRegistry("${aliDockerRegistryUrl}", 'aliDockerRegistry') {
+            echo "1.1 获取 打包文件"
             unstash("${appIoStore.stashMark}")
 
-            echo "4.2 预检 Workspace"
+            echo "1.2 预检 Workspace"
             sh "ls -al"
 
             if (params.ENABLE_DEBUG) {
               input("是否继续进行下一步？")
             }
 
-            echo "4.3 构建 Image"
+            echo "1.3 构建 Image"
             appIoStore.dockerImage = docker.build(appIoStore.dockerImageName, "--build-arg DIST_DIR=${appIoStore.dockerArgsDistDir} --build-arg PORT=${appIoStore.dockerArgsPort} .")
 
-            echo "4.4 发布 Image"
+            echo "1.4 发布 Image"
             appIoStore.dockerImage.push()
             appIoStore.dockerImage.push("${appIoStore.dockerTag}")
           }
@@ -176,7 +175,6 @@ pipeline {
       steps {
         withCredentials([sshUserPrivateKey(credentialsId: 'aliInkEcs', keyFileVariable: 'identity', passphraseVariable: '', usernameVariable: 'username')]) {
           script {
-            def remote = [:]
             appEcsPassport.name = "o-w-o"
             appEcsPassport.host = "draft.o-w-o.ink"
             appEcsPassport.allowAnyHosts = true
@@ -189,62 +187,58 @@ pipeline {
 
     stage('deploy') {
       parallel {
-        stage('Deploy to ECS') {
-          stages {
-            stage('For Release') {
-              when {
-                branch 'master'
+        stage('deploy:release') {
+          when {
+            branch 'master'
+          }
+          steps {
+            script {
+              try {
+                sshCommand remote: appEcsPassport, command: "docker stop ${appName}"
+                sshCommand remote: appEcsPassport, command: "docker rm ${appName}"
+              } catch (e) {
+                echo "部署预处理异常 -> ${e.message}"
+                input("部署预处理出现异常，确认继续执行 【${appIoStore.dockerImageNameWithTag}】 部署行为？")
+              } finally {
+                echo "${appIoStore.dockerImageNameWithTag}"
               }
-              steps {
-                script {
-                  try {
-                    sshCommand remote: remote, command: "docker stop ${appName}"
-                    sshCommand remote: remote, command: "docker rm ${appName}"
-                  } catch (e) {
-                    echo "部署预处理异常 -> ${e.message}"
-                    input("部署预处理出现异常，确认继续执行 【${appIoStore.dockerImageNameWithTag}】 部署行为？")
-                  } finally {
-                    echo "${appIoStore.dockerImageNameWithTag}"
-                  }
 
-                  try {
-                    sshCommand remote: remote, command: "docker pull ${appIoStore.dockerImageNameWithTag}"
-                    sshCommand remote: remote, command: "docker run -i -d --net=host --name=${appName} ${appIoStore.dockerImageNameWithTag}"
-                  } catch (e) {
-                    echo "部署异常 -> ${e.message}"
-                  } finally {
-                    echo "部署检测"
-                    sshCommand remote: remote, command: "docker ps"
-                  }
-                }
+              try {
+                sshCommand remote: appEcsPassport, command: "docker pull ${appIoStore.dockerImageNameWithTag}"
+                sshCommand remote: appEcsPassport, command: "docker run -i -d --net=host --name=${appName} ${appIoStore.dockerImageNameWithTag}"
+              } catch (e) {
+                echo "部署异常 -> ${e.message}"
+              } finally {
+                echo "部署检测"
+                sshCommand remote: appEcsPassport, command: "docker ps"
               }
             }
-            stage('For Draft') {
-              when {
-                branch 'draft'
+          }
+        }
+        stage('deploy:draft') {
+          when {
+            branch 'draft'
+          }
+          steps {
+            script {
+              try {
+                sshCommand remote: appEcsPassport, command: "docker stop ${appName}"
+                sshCommand remote: appEcsPassport, command: "docker rm ${appName}"
+              } catch (e) {
+                echo "部署预处理异常 -> ${e.message}"
+                input("部署预处理出现异常，确认继续执行 【${appIoStore.dockerImageNameWithTag}】 部署行为？")
+              } finally {
+                echo "${appIoStore.dockerImageNameWithTag}"
               }
-              steps {
-                script {
-                  try {
-                    sshCommand remote: remote, command: "docker stop ${appName}"
-                    sshCommand remote: remote, command: "docker rm ${appName}"
-                  } catch (e) {
-                    echo "部署预处理异常 -> ${e.message}"
-                    input("部署预处理出现异常，确认继续执行 【${appIoStore.dockerImageNameWithTag}】 部署行为？")
-                  } finally {
-                    echo "${appIoStore.dockerImageNameWithTag}"
-                  }
 
-                  try {
-                    sshCommand remote: remote, command: "docker pull ${appIoStore.dockerImageNameWithTag}"
-                    sshCommand remote: remote, command: "docker run -i -d --net=host --name=${appName} ${appIoStore.dockerImageNameWithTag}"
-                  } catch (e) {
-                    echo "部署异常 -> ${e.message}"
-                  } finally {
-                    echo "部署检测"
-                    sshCommand remote: remote, command: "docker ps"
-                  }
-                }
+              try {
+                sshCommand remote: appEcsPassport, command: "docker pull ${appIoStore.dockerImageNameWithTag}"
+                sshCommand remote: appEcsPassport, command: "docker run -i -d --net=host --name=${appName} ${appIoStore.dockerImageNameWithTag}"
+              } catch (e) {
+                echo "部署异常 -> ${e.message}"
+              } finally {
+                echo "部署检测"
+                sshCommand remote: appEcsPassport, command: "docker ps"
               }
             }
           }
